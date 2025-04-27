@@ -1,6 +1,6 @@
 [project]
 name = "il-bank-validator"
-version = "0.1.0"
+version = "0.1.1"
 description = "Israeli Bank Account Validator based on MASAV rules (Dec 2024)"
 readme = "README.md"
 authors = [{ name = "Eliyahu Shteinman" }]
