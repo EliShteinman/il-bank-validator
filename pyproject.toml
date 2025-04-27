@@ -1,0 +1,13 @@
+[project]
+name = "il-bank-validator"
+version = "0.1.0"
+description = "Israeli Bank Account Validator based on MASAV rules (Dec 2024)"
+readme = "README.md"
+authors = [{ name = "Eliyahu Shteinman", url = "https://github.com/EliShteinman" }]
+license = {text = "MIT"}
+dependencies = []
+requires-python = ">=3.7"
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
