@@ -60,7 +60,7 @@ print(is_valid)  # True if valid
 - ועוד...
 
 > Based on the official MASAV document:
-> [MASAV Document Link](https://www.masav.co.il/media/2565/bdikat_hukiot_heshbon.pdf)
+> [MASAV Document Link](https://projectstoragemasav.blob.core.windows.net/projectblobstaging/wp-content/uploads/2025/07/Bdikat_hukiot_Heshbon.pdf)
 
 ---
 
