@@ -5,55 +5,65 @@ from .exceptions import InvalidBankAccountException
 # --- Helper Functions ---
 
 
-def _calculate_weighted_sum(digits: str, weights: list[int]) -> int:
-    """
-    Calculates a weighted sum for a string of digits.
-    The weights are applied from right to left on the digits.
-    """
+def _calculate_weighted_sum_left_to_right(digits: str, weights: list[int]) -> int:
+    """Calculates a weighted sum, applying weights from left to right."""
     total = 0
-    reversed_digits = digits[::-1]
-    for i, digit in enumerate(reversed_digits):
+    for i, digit in enumerate(digits):
+        if i < len(weights):
+            total += int(digit) * weights[i]
+    return total
+
+
+def _calculate_weighted_sum_right_to_left(digits: str, weights: list[int]) -> int:
+    """Calculates a weighted sum, applying weights from right to left."""
+    total = 0
+    for i, digit in enumerate(reversed(digits)):
         if i < len(weights):
             total += int(digit) * weights[i]
     return total
 
 
 def _validate_mod11(
-    full_number: str, weights: list[int], valid_remainders: list[int]
+    full_number: str,
+    weights: list[int],
+    valid_remainders: list[int],
+    right_to_left=False,
 ) -> bool:
-    """Generic MOD 11 validation logic."""
+    """Generic MOD 11 validation logic based on direction."""
     if not full_number.isdigit():
         return False
 
-    total = _calculate_weighted_sum(full_number, weights)
+    calculator = (
+        _calculate_weighted_sum_right_to_left
+        if right_to_left
+        else _calculate_weighted_sum_left_to_right
+    )
+    total = calculator(full_number, weights)
     return (total % 11) in valid_remainders
 
 
 def _validate_mod97(
-    branch_code: int, account_number: str, zero_pad_branch=True
+    branch_code: str, account_number: str, zero_pad_branch=True, no_pad_account=False
 ) -> bool:
-    """
-    Generic MOD 97 validation logic (ISO 7064 style).
-    Concatenates branch and account number before checking.
-    """
+    """Generic MOD 97 validation logic (ISO 7064 style)."""
     if not account_number.isdigit() or len(account_number) < 3:
         return False
-
     try:
-        branch_str = str(branch_code).zfill(3) if zero_pad_branch else str(branch_code)
-        num_part_str = branch_str + account_number[:-2]
+        branch_str = branch_code.zfill(3) if zero_pad_branch else branch_code
+        account_part = account_number[:-2]
+
+        num_part_str = branch_str + account_part
         num_part_int = int(num_part_str)
         check_digits = int(account_number[-2:])
 
-        # The check is performed as: 98 - (number % 97) should equal the check digits.
-        # This is derived from examples in the MASAV document.
+        # 98 is the basis for ISO 7064 MOD 97-10
         calculated_check_digits = 98 - (num_part_int % 97)
 
-        # In case the remainder is 1, 98-1=97. The check digit should be 97, not 0.
-        # However, some systems might expect 0. The examples imply 97.
-        # Let's trust the direct calculation: 98-27=71 for One Zero example.
-        return calculated_check_digits == check_digits
+        # Handle the edge case where remainder is 1, which results in 97.
+        if num_part_int % 97 == 1:
+            return check_digits == 97
 
+        return calculated_check_digits == check_digits
     except (ValueError, TypeError):
         return False
 
@@ -61,18 +71,15 @@ def _validate_mod97(
 # --- Bank-Specific Validation Functions ---
 
 
-def _validate_leumi(branch_code: int, account_number: str) -> bool:
-    """Validation for Bank Leumi (10). Based on MASAV rules, page 2."""
+def _validate_leumi(branch_code: str, account_number: str) -> bool:
     acc_norm = account_number.zfill(8)
     if not acc_norm.isdigit() or len(acc_norm) != 8:
         return False
 
-    # Sum is calculated on last digit of branch + first 6 digits of account
-    acc_part_for_sum = str(branch_code % 10) + acc_norm[:-2]
-    weights = [2, 3, 4, 5, 6, 7, 8, 9, 10]  # These weights are described left-to-right
-    base_sum = 0
-    for i, digit in enumerate(acc_part_for_sum):
-        base_sum += int(digit) * weights[i]
+    # Per doc example, calc is on all 3 branch digits + first 6 account digits.
+    calc_str = branch_code.zfill(3) + acc_norm[:6]
+    weights = [10, 9, 8, 7, 6, 5, 4, 3, 2]
+    base_sum = _calculate_weighted_sum_left_to_right(calc_str, weights)
 
     check_digits = int(acc_norm[-2:])
     constants = [128, 180, 330, 340]
@@ -80,187 +87,146 @@ def _validate_leumi(branch_code: int, account_number: str) -> bool:
         constants.append(110)
 
     for const in constants:
-        total = base_sum + const
-        remainder = total % 100
+        remainder = (base_sum + const) % 100
         calculated_check = 0 if remainder == 0 else 100 - remainder
         if calculated_check == check_digits:
             return True
     return False
 
 
-def _validate_hapoalim(branch_code: int, account_number: str) -> bool:
-    """Validation for Bank Hapoalim (12). Based on MASAV rules, page 3."""
-    full_number = str(branch_code).zfill(3) + account_number.zfill(6)
-    weights = [1, 6, 5, 4, 3, 2, 9, 8, 7]
+def _validate_hapoalim(branch_code: str, account_number: str) -> bool:
+    full_number = branch_code.zfill(3) + account_number.zfill(6)
+    weights = [9, 8, 7, 6, 5, 4, 3, 2, 1]
     return _validate_mod11(full_number, weights, [0, 2, 4, 6])
 
 
-def _validate_yahav(branch_code: int, account_number: str) -> bool:
-    """Validation for Bank Yahav (04). Based on MASAV rules, page 3."""
-    full_number = str(branch_code).zfill(3) + account_number.zfill(6)
-    weights = [1, 6, 5, 4, 3, 2, 9, 8, 7]
+def _validate_yahav(branch_code: str, account_number: str) -> bool:
+    full_number = branch_code.zfill(3) + account_number.zfill(6)
+    weights = [9, 8, 7, 6, 5, 4, 3, 2, 1]
     return _validate_mod11(full_number, weights, [0, 2])
 
 
-def _validate_discount_group(branch_code: int, account_number: str) -> bool:
-    """Validation for Discount Group (11, 17). Based on MASAV rules, page 4."""
-    account_only_full = account_number.zfill(9)
-    weights = [1, 2, 3, 4, 5, 6, 7, 8, 9]
-    total = _calculate_weighted_sum(account_only_full, weights)
-    return (total % 11) in [0, 2, 4]
-
-
-def _validate_mizrahi(branch_code: int, account_number: str) -> bool:
-    """Validation for Mizrahi-Tefahot (20). Based on MASAV rules, page 4."""
-    adj_branch = branch_code
-    if 401 <= branch_code <= 799:
-        adj_branch -= 400
-
-    full_number = str(adj_branch).zfill(3) + account_number.zfill(6)
-    weights = [1, 6, 5, 4, 3, 2, 9, 8, 7]
+def _validate_discount_group(branch_code: str, account_number: str) -> bool:
+    full_number = account_number.zfill(9)
+    weights = [9, 8, 7, 6, 5, 4, 3, 2, 1]
     return _validate_mod11(full_number, weights, [0, 2, 4])
 
 
-def _validate_beinleumi_group(branch_code: int, account_number: str) -> bool:
-    """Validation for FIBI Group (31, 52, 14, 46). Based on MASAV rules, pages 6-7."""
-    full_9_digits = str(branch_code).zfill(3) + account_number.zfill(6)
-    weights_9 = [1, 6, 5, 4, 3, 2, 9, 8, 7]
+def _validate_mizrahi(branch_code: str, account_number: str) -> bool:
+    adj_branch = int(branch_code)
+    if 401 <= adj_branch <= 799:
+        adj_branch -= 400
+    full_number = str(adj_branch).zfill(3) + account_number.zfill(6)
+    weights = [9, 8, 7, 6, 5, 4, 3, 2, 1]
+    return _validate_mod11(full_number, weights, [0, 2, 4])
 
-    # Special branch rules take precedence
-    if branch_code in [347, 365, 384, 385]:
+
+def _validate_beinleumi_group(branch_code: str, account_number: str) -> bool:
+    full_9_digits = branch_code.zfill(3) + account_number.zfill(6)
+    weights_9 = [9, 8, 7, 6, 5, 4, 3, 2, 1]
+    if int(branch_code) in [347, 365, 384, 385]:
         return _validate_mod11(full_9_digits, weights_9, [0, 2])
-    if branch_code in [361, 362, 363]:
+    if int(branch_code) in [361, 362, 363]:
         return _validate_mod11(full_9_digits, weights_9, [0, 2, 4])
-
-    # Standard two-step validation
     if _validate_mod11(full_9_digits, weights_9, [0, 6]):
         return True
-
     account_6_digits = account_number.zfill(6)
-    weights_6 = [1, 6, 5, 4, 3, 2]
+    weights_6 = [6, 5, 4, 3, 2, 1]
     return _validate_mod11(account_6_digits, weights_6, [0, 6])
 
 
-def _validate_postal_bank(branch_code: int, account_number: str) -> bool:
-    """Validation for Postal Bank (09). Based on MASAV rules, page 8."""
-    if not account_number.isdigit():
-        return False
-    weights = [1, 2, 3, 4, 5, 6, 7, 8, 9]
-    total = _calculate_weighted_sum(account_number, weights)
+def _validate_postal_bank(branch_code: str, account_number: str) -> bool:
+    weights = [9, 8, 7, 6, 5, 4, 3, 2, 1]
+    total = _calculate_weighted_sum_left_to_right(account_number, weights)
     return total % 10 == 0
 
 
-def _validate_citibank(branch_code: int, account_number: str) -> bool:
-    """Validation for Citibank (22). Based on MASAV rules, page 8."""
+def _validate_citibank(branch_code: str, account_number: str) -> bool:
     acc_norm = account_number.zfill(9)
-    if not acc_norm.isdigit() or len(acc_norm) != 9:
-        return False
-
     num_part = acc_norm[:-1]
     check_digit = int(acc_norm[-1])
     weights = [3, 2, 7, 6, 5, 4, 3, 2]
-    total = _calculate_weighted_sum(num_part, weights)
-    remainder = total % 11
-    calculated_check = (11 - remainder) % 11
-    return calculated_check == check_digit
-
-
-def _validate_hsbc(branch_code: int, account_number: str) -> bool:
-    """Validation for HSBC (23). Based on MASAV rules, page 9."""
-    if not account_number.isdigit() or len(account_number) != 9:
-        return False
-    if branch_code == 101:
-        return account_number[6] in ["4", "9"]
-    if branch_code == 102:
-        return account_number.endswith("001")
-    return True
-
-
-def _validate_one_zero(branch_code: int, account_number: str) -> bool:
-    """Validation for One Zero Digital Bank (18). Based on MASAV rules, page 9."""
-    return _validate_mod97(branch_code, account_number)
-
-
-def _validate_ash(branch_code: int, account_number: str) -> bool:
-    """Validation for Bank Ash (03). Based on MASAV rules, page 10."""
-    if not account_number.isdigit() or len(account_number) != 9:
-        return False
-    weights = [1, 2, 3, 4, 5, 6, 7, 8, 9]
-    total = _calculate_weighted_sum(account_number, weights)
-    return total % 11 == 0
-
-
-def _validate_global_remit(branch_code: int, account_number: str) -> bool:
-    """Validation for Global Remit (47). Based on MASAV rules, page 11."""
-    acc_norm = account_number.zfill(9)
-    if not acc_norm.isdigit() or len(acc_norm) != 9:
-        return False
-
-    num_part = acc_norm[:-1]
-    check_digit = int(acc_norm[-1])
-    weights = [5, 2, 7, 3, 4, 6, 8, 9]
-    total = _calculate_weighted_sum(num_part, weights)
+    total = _calculate_weighted_sum_left_to_right(num_part, weights)
     remainder = total % 11
     return (11 - remainder) % 11 == check_digit
 
 
-def _validate_grow(branch_code: int, account_number: str) -> bool:
-    """Validation for GROW (35). Based on MASAV rules, page 11."""
-    if branch_code >= 900:
+def _validate_hsbc(branch_code: str, account_number: str) -> bool:
+    if not account_number.isdigit() or len(account_number) != 9:
+        return False
+    if int(branch_code) == 101:
+        return account_number[6] in ["4", "9"]
+    if int(branch_code) == 102:
+        return account_number.endswith("001")
+    return True
+
+
+def _validate_one_zero(branch_code: str, account_number: str) -> bool:
+    return _validate_mod97(branch_code, account_number)
+
+
+def _validate_ash(branch_code: str, account_number: str) -> bool:
+    if not account_number.isdigit() or len(account_number) != 9:
+        return False
+    weights = [9, 8, 7, 6, 5, 4, 3, 2, 1]
+    return _validate_mod11(account_number, weights, [0])
+
+
+def _validate_global_remit(branch_code: str, account_number: str) -> bool:
+    acc_norm = account_number.zfill(9)
+    num_part = acc_norm[:-1]
+    check_digit = int(acc_norm[-1])
+    weights = [9, 8, 6, 4, 3, 7, 2, 5]
+    total = _calculate_weighted_sum_left_to_right(num_part, weights)
+    remainder = total % 11
+    return (11 - remainder) % 11 == check_digit
+
+
+def _validate_grow(branch_code: str, account_number: str) -> bool:
+    if int(branch_code) >= 900:
         return True
     return _validate_mod97(branch_code, account_number, zero_pad_branch=False)
 
 
-def _validate_ofek(branch_code: int, account_number: str) -> bool:
-    """Validation for Ofek (15). Based on MASAV rules, page 12."""
+def _validate_ofek(branch_code: str, account_number: str) -> bool:
     return _validate_mod97(branch_code, account_number)
 
 
-def _validate_nima(branch_code: int, account_number: str) -> bool:
-    """Validation for Nima Shefa Israel (21). Based on MASAV rules, page 12."""
+def _validate_nima(branch_code: str, account_number: str) -> bool:
     if not account_number.isdigit() or len(account_number) != 8:
         return False
-    weights = [1, 2, 3, 4, 5, 6, 7, 8]
-    total = _calculate_weighted_sum(account_number, weights)
-    return (total % 11) in [0, 2]
+    weights = [8, 7, 6, 5, 4, 3, 2, 1]
+    return _validate_mod11(account_number, weights, [0, 2])
 
 
-def _validate_rewire(branch_code: int, account_number: str) -> bool:
-    """Validation for Rewire (58). Based on MASAV rules, page 13."""
+def _validate_rewire(branch_code: str, account_number: str) -> bool:
     if not account_number.isdigit() or len(account_number) != 9:
         return False
-    weights = [1, 9, 8, 7, 6, 5, 4, 3, 2]
-    total = _calculate_weighted_sum(account_number, weights)
-    return total % 11 == 0
+    weights = [1, 9, 2, 3, 4, 5, 6, 7, 8]
+    return _validate_mod11(account_number, weights, [0])
 
 
-def _validate_isracard(branch_code: int, account_number: str) -> bool:
-    """Validation for Isracard (01). Based on MASAV rules, page 13."""
-    full_number = str(branch_code).zfill(3) + account_number.zfill(7)
+def _validate_isracard(branch_code: str, account_number: str) -> bool:
+    full_number = branch_code.zfill(3) + account_number.zfill(7)
     weights = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-    total = _calculate_weighted_sum(full_number, weights)
-    return (total % 11) == 0
+    return _validate_mod11(full_number, weights, [0], right_to_left=True)
 
 
-def _validate_gmt(branch_code: int, account_number: str) -> bool:
-    """Validation for GMT (69). Based on MASAV rules, page 14."""
-    if branch_code >= 900:
+def _validate_gmt(branch_code: str, account_number: str) -> bool:
+    if int(branch_code) >= 900:
         return True
     return _validate_mod97(branch_code, account_number)
 
 
-def _validate_019(branch_code: int, account_number: str) -> bool:
-    """Validation for 019 Sherutey Tashlum (79). Based on MASAV rules, page 15."""
-    acc_padded = account_number.zfill(9)  # 7 digits + 2 check
+def _validate_019(branch_code: str, account_number: str) -> bool:
+    acc_padded = account_number.zfill(9)
     return _validate_mod97(branch_code, acc_padded)
 
 
-def _no_validation_rule(branch_code: int, account_number: str) -> bool:
-    """Placeholder for banks with no validation rule. Always returns True."""
+def _no_validation_rule(branch_code: str, account_number: str) -> bool:
     return True
 
 
-# --- Main Dispatcher ---
 VALIDATORS = {
     1: _validate_isracard,
     3: _validate_ash,
@@ -269,22 +235,22 @@ VALIDATORS = {
     10: _validate_leumi,
     11: _validate_discount_group,
     12: _validate_hapoalim,
-    13: _no_validation_rule,  # Igud, merged
-    14: _validate_beinleumi_group,  # Otsar HaHayal
+    13: _no_validation_rule,
+    14: _validate_beinleumi_group,
     15: _validate_ofek,
-    17: _validate_discount_group,  # Mercantile
+    17: _validate_discount_group,
     18: _validate_one_zero,
     20: _validate_mizrahi,
     21: _validate_nima,
     22: _validate_citibank,
     23: _validate_hsbc,
-    31: _validate_beinleumi_group,  # FIBI
+    31: _validate_beinleumi_group,
     35: _validate_grow,
-    39: _no_validation_rule,  # Indian Bank
-    46: _validate_beinleumi_group,  # Massad
+    39: _no_validation_rule,
+    46: _validate_beinleumi_group,
     47: _validate_global_remit,
-    52: _validate_beinleumi_group,  # PAGI
-    54: _no_validation_rule,  # Jerusalem
+    52: _validate_beinleumi_group,
+    54: _no_validation_rule,
     58: _validate_rewire,
     69: _validate_gmt,
     79: _validate_019,
@@ -294,34 +260,19 @@ VALIDATORS = {
 def validate_israeli_bank_account(
     bank_code: int, branch_code: int, account_number: str
 ) -> bool:
-    """
-    Validates an Israeli bank account based on the bank code, branch code, and account number.
-    Args:
-        bank_code (int): The 2-digit code of the bank.
-        branch_code (int): The 3-digit code of the branch.
-        account_number (str): The account number, which may include check digits.
-    Returns:
-        bool: True if the account is valid according to MASAV rules, False otherwise.
-    Raises:
-        InvalidBankAccountException: If input types are invalid or the bank code is not supported.
-    """
-    if (
-        not isinstance(bank_code, int)
-        or not isinstance(branch_code, int)
-        or not isinstance(account_number, str)
+    if not all(
+        isinstance(arg, T)
+        for arg, T in zip([bank_code, branch_code, account_number], [int, int, str])
     ):
         raise InvalidBankAccountException(
             "Invalid input types. Expected (int, int, str)."
         )
-
     clean_account_number = account_number.strip()
     if not clean_account_number.isdigit():
         raise InvalidBankAccountException("Account number must contain only digits.")
-
     validator_func = VALIDATORS.get(bank_code)
     if validator_func is None:
         raise InvalidBankAccountException(
             f"Bank with code '{bank_code}' is not supported or does not exist."
         )
-
-    return validator_func(branch_code, clean_account_number)
+    return validator_func(str(branch_code), clean_account_number)

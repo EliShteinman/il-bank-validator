@@ -64,6 +64,13 @@ print(is_valid)  # True if valid
 
 ---
 
+## ⚠️ Known Limitations / מגבלות ידועות
+
+*   **Isracard (Bank 01):** The official MASAV document contains an ambiguous example for Isracard's validation. The numerical calculation shown does not match the provided account number. This library implements the algorithm as described in the text (right-to-left Modulo 11), which may cause the specific example from the document to fail validation. This is tracked and will be updated if clarification is provided by MASAV.
+*   **ישראכרט (בנק 01):** מסמך מס"ב הרשמי מכיל דוגמה שאינה חד-משמעית עבור אימות חשבון ישראכרט. החישוב המספרי המוצג אינו תואם למספר החשבון שניתן בדוגמה. ספרייה זו מממשת את האלגוריתם כפי שהוא מתואר טקסטואלית, מה שעלול לגרום לדוגמה הספציפית מהמסמך להיכשל באימות. הנושא מתועד ויעודכן במידה ויתקבל הבהרה ממס"ב.
+
+---
+
 ## 📋 Features / תכונות עיקריות
 
 - Full compliance with updated MASAV rules (December 2024).
