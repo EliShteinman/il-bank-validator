@@ -1,11 +1,12 @@
 # il_bank_validator/validator.py
 
 from .exceptions import InvalidBankAccountException
+from typing import List
 
 # --- Helper Functions ---
 
 
-def _calculate_weighted_sum_left_to_right(digits: str, weights: list[int]) -> int:
+def _calculate_weighted_sum_left_to_right(digits: str, weights: List[int]) -> int:
     """Calculates a weighted sum, applying weights from left to right."""
     total = 0
     for i, digit in enumerate(digits):
@@ -14,7 +15,7 @@ def _calculate_weighted_sum_left_to_right(digits: str, weights: list[int]) -> in
     return total
 
 
-def _calculate_weighted_sum_right_to_left(digits: str, weights: list[int]) -> int:
+def _calculate_weighted_sum_right_to_left(digits: str, weights: List[int]) -> int:
     """Calculates a weighted sum, applying weights from right to left."""
     total = 0
     for i, digit in enumerate(reversed(digits)):
@@ -25,8 +26,8 @@ def _calculate_weighted_sum_right_to_left(digits: str, weights: list[int]) -> in
 
 def _validate_mod11(
     full_number: str,
-    weights: list[int],
-    valid_remainders: list[int],
+    weights: List[int],
+    valid_remainders: List[int],
     right_to_left=False,
 ) -> bool:
     """Generic MOD 11 validation logic based on direction."""
