@@ -4,6 +4,12 @@
 
 ---
 
+## [0.2.2] - YYYY-MM-DD
+### Fixed
+- **Critical:** Fixed a `TypeError` on Python 3.8 due to incompatible type hints (`list[int]`). The package now uses `typing.List` for backward compatibility, resolving a crash during import on older Python versions.
+
+---
+
 ## [0.2.1] - 2024-05-28
 ### Fixed
 - Corrected numerous validation algorithms that failed in v0.2.0, ensuring all tests based on the MASAV document now pass.
